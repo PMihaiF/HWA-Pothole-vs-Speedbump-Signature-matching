@@ -1,0 +1,10 @@
+# Fișiere de cache Python
+__pycache__/
+*.pyc
+
+
+# Fișiere compilate C++ (binare/executabile)
+*.o
+*.out
+*.exe
+detectie_groapa
