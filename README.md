@@ -14,3 +14,10 @@ It includes a Python visualizer that works like a media player. You can play, pa
 
 First, make sure you have the required Python libraries installed (```bashpip install matplotlib numpy pillow)
 Then run the visualizer (python visualize_groapa.py)
+
+## Controls 
+
+Play/Pause, <<, >>: Navigate through the timeline just like a video player.
+Scroll: Zoom in and out on the graph.
+Click & Drag: Pan around the timeline manually.
+The UI will flash red for potholes (↓) and orange for speedbumps (↑).
