@@ -142,7 +142,28 @@ def animate_data(times, acc_z, moving_average, anomalies):
     
     car_image = ax1.imshow(car_img_array, extent=initial_extent, aspect='auto', zorder=20)
 
-    status_text = ax2.text(0.02, 0.5, "", transform=ax2.transAxes, fontsize=12, weight="bold")
+    # --- CALCULARE STATISTICI PENTRU DISERTAȚIE ---
+    num_potholes = 0
+    num_speedbumps = 0
+    prev_val = 0
+    
+    for val in anomalies:
+        # Detectăm doar tranzițiile noi ca să nu numărăm aceeași groapă de mai multe ori
+        if val == -1 and prev_val != -1:
+            num_potholes += 1
+        elif val == 1 and prev_val != 1:
+            num_speedbumps += 1
+        prev_val = val
+        
+    total_events = num_potholes + num_speedbumps
+
+    # --- TEXTE UI ACTUALIZATE ---
+    status_text = ax2.text(0.02, 0.7, "", transform=ax2.transAxes, fontsize=12, weight="bold")
+    
+    # Textul nou cu statisticile finale
+    stats_string = f"Total evenimente detectate: {total_events}  |  Gropi (Potholes): {num_potholes}  |  Limitatoare (Speedbumps): {num_speedbumps}"
+    stats_text = ax2.text(0.02, 0.3, stats_string, transform=ax2.transAxes, fontsize=11, color="#444444", weight="bold")
+    
     event_text = ax1.text(0.02, 0.93, "", transform=ax1.transAxes, fontsize=11, bbox={"facecolor": "white", "alpha": 0.8, "edgecolor": "gray"})
 
     fig.subplots_adjust(bottom=0.18, top=0.88, hspace=0.3)
@@ -255,11 +276,9 @@ def animate_data(times, acc_z, moving_average, anomalies):
         t = state["playback_time"]
         idx = max(0, np.searchsorted(times, t) - 1)
 
-        # --- RECONSTRUCȚIE LOGICĂ STATELESS (DETERMINISTĂ) ---
         active_event = 0
         offset = 0.0
         
-        # Scanam in spate maxim 0.8 secunde din momentul curent 't' pentru a gasi ultima anomalie activa
         lookback_idx = idx
         while lookback_idx >= 0 and (t - times[lookback_idx]) <= 0.8:
             if anomalies[lookback_idx] != 0:
@@ -268,7 +287,7 @@ def animate_data(times, acc_z, moving_average, anomalies):
                 progress = (t - t_anom) / 0.8
                 offset = direction * 0.5 * math.sin(math.pi * max(0.0, min(1.0, progress)))
                 active_event = direction
-                break  # Oprim scanarea la cel mai apropiat eveniment din trecut
+                break  
             lookback_idx -= 1
         
         car_center_z = baseline_y + offset
@@ -291,7 +310,7 @@ def animate_data(times, acc_z, moving_average, anomalies):
 
     timer.add_callback(timer_tick)
 
-    # --- ZONĂ BUTOANE (Simetrice) ---
+    # --- ZONĂ BUTOANE ---
     rewind_ax = fig.add_axes([0.31, 0.03, 0.10, 0.05], facecolor="#f0f0f0")
     button_ax = fig.add_axes([0.44, 0.03, 0.12, 0.05], facecolor="#f0f0f0")
     ff_ax     = fig.add_axes([0.59, 0.03, 0.10, 0.05], facecolor="#f0f0f0")
