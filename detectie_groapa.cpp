@@ -6,9 +6,10 @@
 
 using namespace std;
 
-// Parametrii sistemului optimizați pentru hardware
-#define WINDOW_SIZE 16          // Putere a lui 2 pentru a elimina divizarea grea pe FPGA
-#define PRAG_ACCELERATIE 3.0 // Pragul în m/s^2 (sensibil la variații de ~0.25 G)
+// Parametrii sistemului optimizati pentru hardware
+#define WINDOW_SIZE 16          
+#define PRAG_ACCELERATIE 3.0 
+#define COOLDOWN_SAMPLES 30     // ~1.5 secunde de ignorare a suspensiei la 20Hz
 
 // ---------------------------------------------------------
 // FUNCȚIA CORE PENTRU FPGA (Top-Level Function pentru Vitis)
@@ -21,6 +22,7 @@ int detectie_groapa(float acc_z) {
     static float suma = 0.0f;
     static int index = 0;
     static bool buffer_plin = false;
+    static int cooldown = 0; // Variabilă statică pentru blocarea oscilațiilor
 
     // 1. Optimizare O(1): Scădem valoarea veche care iese din fereastră
     float valoare_veche = fereastra[index];
@@ -40,12 +42,19 @@ int detectie_groapa(float acc_z) {
     // Blocăm detecțiile până când fereastra se umple complet prima dată
     if (!buffer_plin) return 0;
 
-    // 4. Calculăm media mobilă și diferența locală
+    // 4. Dacă suntem în perioada de recuperare (cooldown), ignorăm șocurile
+    if (cooldown > 0) {
+        cooldown--;
+        return 0;
+    }
+
+    // 5. Calculăm media mobilă și diferența locală
     float media = suma / WINDOW_SIZE; 
     float diff = acc_z - media;
 
-    // 5. Decizie de clasificare bazată pe semnul deviației
+    // 6. Decizie de clasificare bazată pe semnul deviației
     if (std::abs(diff) > PRAG_ACCELERATIE) {
+        cooldown = COOLDOWN_SAMPLES; // Activăm blocarea pentru următoarele eșantioane
         return diff > 0 ? 1 : -1;
     }
 
@@ -56,7 +65,6 @@ int detectie_groapa(float acc_z) {
 // TESTBENCH / MEDIUL DE SIMULARE SOFTWARE
 // ---------------------------------------------------------
 int main() {
-    // Am actualizat numele fișierului pentru a citi exportul de la phyphox
     ifstream file("Raw Data.csv");
     string line;
 
@@ -76,34 +84,28 @@ int main() {
         string item;
         float timp, ax, ay, az, abs_acc;
 
-        // Filtrare header text din CSV-ul Phyphox
         if (first_line) {
             first_line = false;
-            // Phyphox folosește "Time (s)" în header
             if (line.find("Time") != string::npos || line.find("timp") != string::npos) {
                 continue;
             }
         }
 
-        // Parsare linie cu linie (acum avem 5 coloane)
         try {
             getline(ss, item, ','); timp = stof(item);
             getline(ss, item, ','); ax = stof(item);
             getline(ss, item, ','); ay = stof(item);
             getline(ss, item, ','); az = stof(item);
-            // Citim și a 5-a coloană (Absolute acceleration) pentru a finaliza linia corect
             getline(ss, item, ','); abs_acc = stof(item);
         } catch (...) {
-            continue; // Ignoră eventualele linii corupte sau incomplete
+            continue; 
         }
 
         numar_esantion++;
         
         // --- DOWNSAMPLING PENTRU A REGLA FRECVENȚA ---
-        // Sărim peste 19 din 20 de eșantioane pentru a aduce datele de la 400Hz la 20Hz
         if (numar_esantion % 20 != 0) continue; 
         
-        // Apelul funcției algoritmului principal
         int rezultat = detectie_groapa(az);
         
         if (rezultat != 0) {

@@ -19,6 +19,7 @@ except ImportError:
 CSV_FILE = "Raw Data.csv"
 WINDOW_SIZE = 16          
 PRAG_ACCELERATIE = 3.0   
+COOLDOWN_SAMPLES = 30     
 CAR_IMAGE = "car.png"
 
 def read_sensor_data(csv_path):
@@ -44,7 +45,6 @@ def read_sensor_data(csv_path):
             except ValueError:
                 continue
 
-    # --- DOWNSAMPLING PENTRU PERFORMANȚĂ ---
     if len(times) > 10:
         dt = times[1] - times[0]
         if dt > 0:
@@ -65,6 +65,7 @@ def detect_anomalies(acc_z, window_size, threshold):
     index = 0
     full = False
     anomaly_types = []
+    cooldown_counter = 0 # Sincronizare cu logica hardware
 
     for value in acc_z:
         window[index] = value
@@ -77,10 +78,17 @@ def detect_anomalies(acc_z, window_size, threshold):
             anomaly_types.append(0)
             continue
 
+        if cooldown_counter > 0:
+            cooldown_counter -= 1
+            anomaly_types.append(0)
+            continue
+
         mean = sum(window) / window_size
         diff = value - mean
+        
         if abs(diff) > threshold:
             anomaly_types.append(1 if diff > 0 else -1)
+            cooldown_counter = COOLDOWN_SAMPLES # Activam blocarea oscilatiilor
         else:
             anomaly_types.append(0)
 
@@ -142,25 +150,13 @@ def animate_data(times, acc_z, moving_average, anomalies):
     
     car_image = ax1.imshow(car_img_array, extent=initial_extent, aspect='auto', zorder=20)
 
-    # --- CALCULARE STATISTICI PENTRU DISERTAȚIE ---
-    num_potholes = 0
-    num_speedbumps = 0
-    prev_val = 0
-    
-    for val in anomalies:
-        # Detectăm doar tranzițiile noi ca să nu numărăm aceeași groapă de mai multe ori
-        if val == -1 and prev_val != -1:
-            num_potholes += 1
-        elif val == 1 and prev_val != 1:
-            num_speedbumps += 1
-        prev_val = val
-        
+    # --- CALCULARE STATISTICI (Acum curatate de efectul de chatter) ---
+    num_potholes = anomalies.count(-1)
+    num_speedbumps = anomalies.count(1)
     total_events = num_potholes + num_speedbumps
 
-    # --- TEXTE UI ACTUALIZATE ---
     status_text = ax2.text(0.02, 0.7, "", transform=ax2.transAxes, fontsize=12, weight="bold")
     
-    # Textul nou cu statisticile finale
     stats_string = f"Total evenimente detectate: {total_events}  |  Gropi (Potholes): {num_potholes}  |  Limitatoare (Speedbumps): {num_speedbumps}"
     stats_text = ax2.text(0.02, 0.3, stats_string, transform=ax2.transAxes, fontsize=11, color="#444444", weight="bold")
     
@@ -199,7 +195,6 @@ def animate_data(times, acc_z, moving_average, anomalies):
 
     def on_mouse_press(event):
         if event.button != 1: return
-        
         if event.inaxes == ax1:
             state["panning"] = True; state["mouse_start_x"] = event.x; state["mouse_start_y"] = event.y
             state["xlim_start"] = ax1.get_xlim(); state["ylim_start"] = ax1.get_ylim()
@@ -227,18 +222,15 @@ def animate_data(times, acc_z, moving_average, anomalies):
     def on_mouse_release(event):
         if event.button != 1: return
         state["panning"] = False
-        
         now = time.time()
         if state["rewind_pressed"]:
             state["rewind_pressed"] = False
             if not state["was_held"] or (now - state["press_start_time"] <= 0.3):
                 state["playback_time"] -= 1.0  
-
         if state["ff_pressed"]:
             state["ff_pressed"] = False
             if not state["was_held"] or (now - state["press_start_time"] <= 0.3):
                 state["playback_time"] += 1.0  
-
         if state["playback_time"] < times[0]: state["playback_time"] = times[0]
         if state["playback_time"] > times[-1]: state["playback_time"] = times[-1]
 
@@ -310,7 +302,6 @@ def animate_data(times, acc_z, moving_average, anomalies):
 
     timer.add_callback(timer_tick)
 
-    # --- ZONĂ BUTOANE ---
     rewind_ax = fig.add_axes([0.31, 0.03, 0.10, 0.05], facecolor="#f0f0f0")
     button_ax = fig.add_axes([0.44, 0.03, 0.12, 0.05], facecolor="#f0f0f0")
     ff_ax     = fig.add_axes([0.59, 0.03, 0.10, 0.05], facecolor="#f0f0f0")
